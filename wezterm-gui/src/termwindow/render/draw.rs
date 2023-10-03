@@ -268,7 +268,6 @@ impl crate::TermWindow {
                 vb.next_index();
             }
         }
-
         Ok(())
     }
 }

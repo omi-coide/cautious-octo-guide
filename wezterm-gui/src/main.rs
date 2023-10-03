@@ -1122,8 +1122,26 @@ fn run() -> anyhow::Result<()> {
         }
     }
 
-    let opts = Opt::parse();
-
+    let mut opts = Opt::parse();
+    opts.skip_config = true;
+    opts.config_file = None;
+    opts.config_override = vec![(String::from("show_tabs_in_tab_bar"), String::from("false"))
+    ,(String::from("enable_tab_bar"),String::from("false"))];
+    opts.attach_parent_console = false;
+    let mut app_path = std::env::current_exe().unwrap();
+    app_path.set_file_name("app");
+        opts.cmd = Some(SubCommand::Start(StartCommand {
+        no_auto_connect: true,
+        always_new_process: true,
+        cwd: None,
+        _cmd: true,
+        class: None,
+        workspace: None,
+        position: None,
+        domain: None,
+        attach: false,
+        prog: vec![app_path.into()],
+    }));
     // This is a bit gross.
     // In order to not to automatically open a standard windows console when
     // we run, we use the windows_subsystem attribute at the top of this
@@ -1176,7 +1194,7 @@ fn run() -> anyhow::Result<()> {
             })?
         }
     };
-
+    // begin customization
     match sub {
         SubCommand::Start(start) => {
             log::trace!("Using configuration: {:#?}\nopts: {:#?}", config, opts);
