@@ -2,6 +2,8 @@ use crate::colorease::ColorEaseUniform;
 use crate::termwindow::webgpu::{ShaderUniform, PostProcessUniform};
 use crate::termwindow::RenderFrame;
 use crate::uniforms::UniformBuilder;
+use futures::executor::block_on;
+use wgpu::TextureViewDescriptor;
 use ::window::glium;
 use ::window::glium::uniforms::{
     MagnifySamplerFilter, MinifySamplerFilter, Sampler, SamplerWrapFunction,
@@ -22,9 +24,11 @@ impl crate::TermWindow {
 
         let webgpu = self.webgpu.as_mut().unwrap();
         let render_state = self.render_state.as_ref().unwrap();
-
-        let output = webgpu.surface.get_current_texture()?;
+        let output = webgpu.surface.get_current_texture()?; // 真正的屏幕
+        let screen_size = output.texture.size();
+        // post processing 渲染的目标
         let view_final = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         // 建立中间缓冲区用于后处理的输入
         let pp_input_desc = wgpu::TextureDescriptor {
             label: Some("Medium Buf post process"),
@@ -39,7 +43,7 @@ impl crate::TermWindow {
             view_formats: &[],
         };
         let pp_texture = webgpu.device.create_texture(&pp_input_desc);
-        let view = pp_texture
+        let view = pp_texture       //给原本的渲染管线传入一个离屏Texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = webgpu
             .device
@@ -155,24 +159,104 @@ impl crate::TermWindow {
         }
         // 时间 ： milliseconds
         
+
+
+        let time = self.created.elapsed().as_secs_f32();
+        if false {
+            let u32_size = std::mem::size_of::<u32>() as u32;
+            let output_buffer_size = (u32_size * pp_texture.size().width * pp_texture.size().height) as wgpu::BufferAddress;
+            let output_buffer_desc = wgpu::BufferDescriptor {
+                size: output_buffer_size,
+                usage: wgpu::BufferUsages::COPY_DST
+                    // MAP_READ 告诉 wpgu 我们要在 cpu 端读取此缓冲区
+                    | wgpu::BufferUsages::MAP_READ,
+                label: None,
+                mapped_at_creation: false,
+            };
+            let output_buffer = webgpu.device.create_buffer(&output_buffer_desc);
+            encoder.copy_texture_to_buffer(
+                wgpu::ImageCopyTexture {
+                    aspect: wgpu::TextureAspect::All,
+                            texture: &pp_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                wgpu::ImageCopyBuffer {
+                    buffer: &output_buffer,
+                    layout: wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(u32_size * pp_texture.size().width),
+                        rows_per_image: Some(pp_texture.size().height),
+                    },
+                },
+                pp_texture.size(),
+            );
+            webgpu.queue.submit(std::iter::once(encoder.finish()));
+            {
+                let buffer_slice = output_buffer.slice(..);
+            
+                // 注意：我们必须在 await future 之前先创建映射，然后再调用 device.poll()。
+                // 否则，应用程序将停止响应。
+                let (tx, rx) = futures::channel::oneshot::channel();
+                buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                    tx.send(result).unwrap();
+                });
+                webgpu.device.poll(wgpu::Maintain::Wait);
+                block_on(async {rx.await});
+            
+                let data = buffer_slice.get_mapped_range();
+            
+                use image::{ImageBuffer, Rgba};
+                let buffer =
+                    ImageBuffer::<Rgba<u8>, _>::from_raw(pp_texture.size().width, pp_texture.size().height, data).unwrap();
+                buffer.save("image.png").unwrap();
+                std::process::exit(0);
+            }
+        }
         // submit will accept anything that implements IntoIter
         webgpu.queue.submit(std::iter::once(encoder.finish()));
-
+        
         let mut pp_encoder = webgpu
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
+
+        let post_process_bind_texture = //后处理传递材质
+        webgpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &webgpu.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view), // 输入是原渲染管线的输出
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&webgpu.texture_linear_sampler),
+                },
+            ],
+            label: Some("linear bind group"),
+        });
+
+        let vertices: [f32; 18] = [
+            -1.0, -1.0, 0.0,
+            1.0, -1.0, 0.0,
+            -1.0, 1.0, 0.0,
+            1.0, -1.0, 0.0,
+            1.0, 1.0, 0.0,
+            -1.0, 1.0, 0.0,
+        ];
+
         // pass in a new vertex buffer using &webgpu
-        let dummy_vbuf = crate::renderstate::WebGpuVertexBuffer::new(
-            0,
-            webgpu,
-        );
-        dummy_vbuf.unmap();
+        let dummy_vbuf = wgpu::util::DeviceExt::create_buffer_init(&webgpu.device, &wgpu::util::BufferInitDescriptor {
+            label: Some("Dummy Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+          });
+        let time = self.created.elapsed().as_secs_f32();
         let uniforms = webgpu.create_pp_uniform(PostProcessUniform {
-            foreground_text_hsb,
-            milliseconds,
-            projection,
+            resolution: [screen_size.width as f32,screen_size.height as f32 ],
+            time,
         });
         {
             cleared = false;
@@ -185,12 +269,7 @@ impl crate::TermWindow {
                         load: if cleared {
                             wgpu::LoadOp::Load
                         } else {
-                            wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.,
-                                g: 0.,
-                                b: 0.,
-                                a: 0.,
-                            })
+                            wgpu::LoadOp::Clear(wgpu::Color::GREEN)
                         },
                         store: true,
                     },
@@ -200,8 +279,8 @@ impl crate::TermWindow {
             post_process_pass.set_pipeline(&webgpu.pp_pipeline);
             post_process_pass.set_vertex_buffer(0, dummy_vbuf.slice(..));
             post_process_pass.set_bind_group(0, &uniforms, &[]);
-            post_process_pass.set_bind_group(1, &texture_linear_bind_group, &[]);
-            post_process_pass.draw(0..0, 0..0);
+            post_process_pass.set_bind_group(1, &post_process_bind_texture, &[]);
+            post_process_pass.draw(0..6, 0..1);
         }
         webgpu.queue.submit(std::iter::once(pp_encoder.finish()));
 

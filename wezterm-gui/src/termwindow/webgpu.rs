@@ -22,9 +22,8 @@ pub struct ShaderUniform {
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PostProcessUniform {
-    pub foreground_text_hsb: [f32; 3],
-    pub milliseconds: u32,
-    pub projection: [[f32; 4]; 4],
+    pub   resolution: [f32;2],
+    pub time: f32,
 }
 pub struct WebGpuState {
     pub adapter_info: wgpu::AdapterInfo,
@@ -574,7 +573,7 @@ impl WebGpuState {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("PPUniform Buffer"),
-                contents: bytemuck::cast_slice(&[uniform]),
+                contents: bytemuck::cast_slice(&[uniform,uniform]), //HACK! YLY
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {

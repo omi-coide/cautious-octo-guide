@@ -73,15 +73,34 @@ struct VertexOutput {
 fn dummy_vs(
     @builtin(vertex_index) in_vertex_index: u32,
 ) -> VertexOutput {
-    var out: VertexOutput;
-    let x = f32(1 - i32(in_vertex_index)) * 0.5;
-    let y = f32(i32(in_vertex_index & 1u) * 2 - 1) * 0.5;
-    out.clip_position = vec4f(x, y, 0.0, 1.0);
-    return out;
+    var output: VertexOutput;
+    if in_vertex_index == 0u {
+        output.clip_position = vec4<f32>(-1.0, -1.0, 0.0, 1.0);
+    } else if (in_vertex_index == 1u) {
+        output.clip_position = vec4<f32>(1.0, -1.0, 0.0, 1.0);
+    } else if (in_vertex_index == 2u) {
+        output.clip_position = vec4<f32>(-1.0, 1.0, 0.0, 1.0);
+    } else if (in_vertex_index == 3u) {
+        output.clip_position = vec4<f32>(1.0, -1.0, 0.0, 1.0);
+    }else if (in_vertex_index == 4u) {
+        output.clip_position = vec4<f32>(1.0, 1.0, 0.0, 1.0);
+    }else if (in_vertex_index == 5u) {
+        output.clip_position = vec4<f32>(-1.0, 1.0, 0.0, 1.0);
+    }
+            //    -1.0, -1.0, 0.0,
+            // 1.0, -1.0, 0.0,
+            // -1.0, 1.0, 0.0,
+            // 1.0, -1.0, 0.0,
+            // 1.0, 1.0, 0.0,
+            // -1.0, 1.0, 0.0,
+    return output;
 }
 @fragment
-fn pp_fs(in: VertexOutput) -> @location(0) vec4f {
-    return vec4f(0.3, 0.2, 0.1, 1.0);
+fn pp_fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4f {
+    let screenPosition = fragCoord.xyz / fragCoord.w;
+    // var color = textureSample(tex2d, texsampler, screenPosition.xy);
+    var color = vec4f(screenPosition,1.0);
+    return color;
 }
 // fn mainImage(fragCoord:vec2<f32> ) -> vec4<f32>
 // {
