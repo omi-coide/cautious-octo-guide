@@ -19,7 +19,13 @@ pub struct ShaderUniform {
     // sampler2D atlas_nearest_sampler;
     // sampler2D atlas_linear_sampler;
 }
-
+#[repr(C)]
+#[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PostProcessUniform {
+    pub foreground_text_hsb: [f32; 3],
+    pub milliseconds: u32,
+    pub projection: [[f32; 4]; 4],
+}
 pub struct WebGpuState {
     pub adapter_info: wgpu::AdapterInfo,
     pub downlevel_caps: wgpu::DownlevelCapabilities,
@@ -29,6 +35,7 @@ pub struct WebGpuState {
     pub config: RefCell<wgpu::SurfaceConfiguration>,
     pub dimensions: RefCell<Dimensions>,
     pub render_pipeline: wgpu::RenderPipeline,
+    pub pp_pipeline: wgpu::RenderPipeline,
     shader_uniform_bind_group_layout: wgpu::BindGroupLayout,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub texture_nearest_sampler: wgpu::Sampler,
@@ -377,7 +384,7 @@ impl WebGpuState {
         surface.configure(&device, &config);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shader.wgsl"));
-
+        let post_process_shader = device.create_shader_module(wgpu::include_wgsl!("../post_process.wgsl"));
         let shader_uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
@@ -482,6 +489,51 @@ impl WebGpuState {
             multiview: None,
         });
 
+        let pp_pipeline_layout =
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[
+                &shader_uniform_bind_group_layout,
+                &texture_bind_group_layout,
+            ],
+            push_constant_ranges: &[],
+        });
+        let pp_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&pp_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &post_process_shader, // 使用新的shader
+                entry_point: "dummy_vs",
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &post_process_shader,
+                entry_point: "pp_fs",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
         Ok(Self {
             adapter_info,
             downlevel_caps,
@@ -496,6 +548,7 @@ impl WebGpuState {
             texture_bind_group_layout,
             texture_nearest_sampler,
             texture_linear_sampler,
+            pp_pipeline,
         })
     }
 
@@ -516,7 +569,23 @@ impl WebGpuState {
             label: Some("ShaderUniform Bind Group"),
         })
     }
-
+    pub fn create_pp_uniform(&self, uniform: PostProcessUniform) -> wgpu::BindGroup {
+        let buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("PPUniform Buffer"),
+                contents: bytemuck::cast_slice(&[uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.shader_uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+            label: Some("PPUniform Bind Group"),
+        })
+    }
     #[allow(unused_mut)]
     pub fn resize(&self, mut dims: Dimensions) {
         // During a live resize on Windows, the Dimensions that we're processing may be

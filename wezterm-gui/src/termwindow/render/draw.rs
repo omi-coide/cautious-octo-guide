@@ -1,5 +1,5 @@
 use crate::colorease::ColorEaseUniform;
-use crate::termwindow::webgpu::ShaderUniform;
+use crate::termwindow::webgpu::{ShaderUniform, PostProcessUniform};
 use crate::termwindow::RenderFrame;
 use crate::uniforms::UniformBuilder;
 use ::window::glium;
@@ -24,8 +24,22 @@ impl crate::TermWindow {
         let render_state = self.render_state.as_ref().unwrap();
 
         let output = webgpu.surface.get_current_texture()?;
-        let view = output
-            .texture
+        let view_final = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // 建立中间缓冲区用于后处理的输入
+        let pp_input_desc = wgpu::TextureDescriptor {
+            label: Some("Medium Buf post process"),
+            size: output.texture.size(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format : output.texture.format(),
+            usage: wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+        let pp_texture = webgpu.device.create_texture(&pp_input_desc);
+        let view = pp_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = webgpu
             .device
@@ -139,9 +153,60 @@ impl crate::TermWindow {
                 vb.next_index();
             }
         }
-
+        // 时间 ： milliseconds
+        
         // submit will accept anything that implements IntoIter
         webgpu.queue.submit(std::iter::once(encoder.finish()));
+
+        let mut pp_encoder = webgpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+        // pass in a new vertex buffer using &webgpu
+        let dummy_vbuf = crate::renderstate::WebGpuVertexBuffer::new(
+            0,
+            webgpu,
+        );
+        dummy_vbuf.unmap();
+        let uniforms = webgpu.create_pp_uniform(PostProcessUniform {
+            foreground_text_hsb,
+            milliseconds,
+            projection,
+        });
+        {
+            cleared = false;
+            let mut post_process_pass = pp_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Post Processing Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view_final,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: if cleared {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.,
+                                g: 0.,
+                                b: 0.,
+                                a: 0.,
+                            })
+                        },
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+            post_process_pass.set_pipeline(&webgpu.pp_pipeline);
+            post_process_pass.set_vertex_buffer(0, dummy_vbuf.slice(..));
+            post_process_pass.set_bind_group(0, &uniforms, &[]);
+            post_process_pass.set_bind_group(1, &texture_linear_bind_group, &[]);
+            post_process_pass.draw(0..0, 0..0);
+        }
+        webgpu.queue.submit(std::iter::once(pp_encoder.finish()));
+
+        // 继续完成从离屏渲染帧进行后处理后显示到view_final 上，并刷新output
+
         output.present();
 
         Ok(())
