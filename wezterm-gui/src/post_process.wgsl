@@ -98,10 +98,37 @@ fn dummy_vs(
 @fragment
 fn pp_fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4f {
     let pos_normed = vec2(fragCoord.x / uniforms.resolution.x,fragCoord.y / uniforms.resolution.y);
-    var color = textureSample(tex2d, texsampler, pos_normed);
+    let uv = curve_uv(pos_normed,vec2(5.0,5.0));
+    var color = textureSample(tex2d, texsampler, uv);
+    color = vec4(drawScanline(color.rgb,pos_normed,0.7),color.a);
     // var color = vec4<f32>(pos_normed, 1.0 ,1.0);
     return color;
 }
+fn curve_uv(uv:vec2<f32>,curve_rate:vec2<f32>)-> vec2<f32>{
+    // uv: 输入uv坐标
+    // curve_rate: xy 方向的曲率
+    var out = uv * 2.0 - 1.0;
+    var offset = abs(out.yx) / curve_rate;
+    out = out + out * offset * offset;
+    out = out*0.5 + 0.5;
+    return out;
+}
+
+ 
+fn drawScanline( color:vec3<f32>, uv:vec2<f32>, intensity:f32 ) -> vec3<f32>
+{
+    let x_res = uniforms.resolution.x;
+    let y_res =uniforms.resolution.y;
+    var scanline 	= clamp( (1.0-intensity) + intensity * cos( 3.14 * ( uv.y ) * y_res * 1.0 ), 0.0, 1.0 );
+    // var scanline 	= clamp( (1.0-intensity) + intensity * cos( 3.14 * ( uv.y + 0.008 * uniforms.time ) * y_res * 1.0 ), 0.0, 1.0 );
+    var grille 	= 0.85 + 0.15 * clamp( 1.5 * cos( 3.14 * uv.x * x_res * 1.0 ), 0.0, 1.0 );    
+    var out = color* scanline * grille * 1.2;
+    return out;
+}
+// fn blur(tex:texture_2d,uv:vec2<f32>,sigma:f32){
+    
+
+// }
 // fn mainImage(fragCoord:vec2<f32> ) -> vec4<f32>
 // {
 //     // Normalized pixel coordinates (from 0 to 1)

@@ -141,6 +141,16 @@ impl crate::TermWindow {
                     }
                 }
             }
+            // 太闪了，所以取消
+            // // 为了显示与时间相关的动画，每帧都应该重新绘制
+            // let window = self.window.clone().take().unwrap();
+            // promise::spawn::spawn(async move {
+            //     let win = window.clone();
+            //     window.notify(TermWindowNotif::Apply(Box::new(move |tw| {
+            //         win.invalidate();
+            //     })));
+            // })
+            // .detach();
         }
     }
 
