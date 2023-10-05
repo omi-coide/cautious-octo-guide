@@ -1,0 +1,9 @@
+Record a terminal session as an asciicast
+
+Usage: wezterm record [PROG]...
+
+Arguments:
+  [PROG]...  
+
+Options:
+  -h, --help  Print help
