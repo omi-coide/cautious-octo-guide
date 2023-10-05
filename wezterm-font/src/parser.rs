@@ -827,6 +827,7 @@ pub(crate) fn load_built_in_fonts(font_info: &mut Vec<ParsedFont>) -> anyhow::Re
     let lib = crate::ftwrap::Library::new()?;
 
     let built_ins: &[&[(&[u8], &str)]] = &[
+        &[font!("../../assets/fonts/TerminusTTF-4.46.0.ttf")],
         #[cfg(any(test, feature = "vendor-jetbrains"))]
         &[
             font!("../../assets/fonts/JetBrainsMono-BoldItalic.ttf"),

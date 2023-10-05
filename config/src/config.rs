@@ -1648,7 +1648,7 @@ fn default_term() -> String {
 }
 
 fn default_font_size() -> f64 {
-    12.0
+    16.0
 }
 
 pub(crate) fn compute_data_dir() -> anyhow::Result<PathBuf> {
