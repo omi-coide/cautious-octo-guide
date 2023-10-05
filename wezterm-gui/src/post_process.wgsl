@@ -97,9 +97,9 @@ fn dummy_vs(
 }
 @fragment
 fn pp_fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4f {
-    let screenPosition = fragCoord.xyz / fragCoord.w;
-    // var color = textureSample(tex2d, texsampler, screenPosition.xy);
-    var color = vec4f(screenPosition,1.0);
+    let pos_normed = vec2(fragCoord.x / uniforms.resolution.x,fragCoord.y / uniforms.resolution.y);
+    var color = textureSample(tex2d, texsampler, pos_normed);
+    // var color = vec4<f32>(pos_normed, 1.0 ,1.0);
     return color;
 }
 // fn mainImage(fragCoord:vec2<f32> ) -> vec4<f32>

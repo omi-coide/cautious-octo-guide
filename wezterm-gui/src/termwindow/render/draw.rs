@@ -10,7 +10,14 @@ use ::window::glium::uniforms::{
 };
 use ::window::glium::{BlendingFunction, LinearBlendingFactor, Surface};
 use config::FreeTypeLoadTarget;
-
+const DUMMY_VERTICES: [f32; 18] = [
+    -1.0, -1.0, 0.0,
+    1.0, -1.0, 0.0,
+    -1.0, 1.0, 0.0,
+    1.0, -1.0, 0.0,
+    1.0, 1.0, 0.0,
+    -1.0, 1.0, 0.0,
+];
 impl crate::TermWindow {
     pub fn call_draw(&mut self, frame: &mut RenderFrame) -> anyhow::Result<()> {
         match frame {
@@ -238,19 +245,12 @@ impl crate::TermWindow {
             label: Some("linear bind group"),
         });
 
-        let vertices: [f32; 18] = [
-            -1.0, -1.0, 0.0,
-            1.0, -1.0, 0.0,
-            -1.0, 1.0, 0.0,
-            1.0, -1.0, 0.0,
-            1.0, 1.0, 0.0,
-            -1.0, 1.0, 0.0,
-        ];
+
 
         // pass in a new vertex buffer using &webgpu
         let dummy_vbuf = wgpu::util::DeviceExt::create_buffer_init(&webgpu.device, &wgpu::util::BufferInitDescriptor {
             label: Some("Dummy Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
+            contents: bytemuck::cast_slice(&DUMMY_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
           });
         let time = self.created.elapsed().as_secs_f32();
