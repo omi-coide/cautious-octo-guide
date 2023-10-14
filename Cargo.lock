@@ -5887,7 +5887,7 @@ dependencies = [
  "winapi",
  "window",
  "window-funcs",
- "windows 0.33.0",
+ "windows 0.48.0",
 ]
 
 [[package]]
