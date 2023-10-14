@@ -33,7 +33,6 @@ pub mod lua;
 pub mod meta;
 mod scheme_data;
 mod serial;
-mod ssh;
 mod terminal;
 mod tls;
 mod units;
@@ -51,7 +50,6 @@ pub use font::*;
 pub use frontend::*;
 pub use keys::*;
 pub use serial::*;
-pub use ssh::*;
 pub use terminal::*;
 pub use tls::*;
 pub use units::*;
@@ -61,6 +59,14 @@ pub use wsl::*;
 
 type ErrorCallback = fn(&str);
 
+pub fn username_from_env() -> anyhow::Result<String> {
+    #[cfg(unix)]
+    const USER: &str = "USER";
+    #[cfg(windows)]
+    const USER: &str = "USERNAME";
+
+    std::env::var(USER).with_context(|| format!("while resolving {} env var", USER))
+}
 lazy_static! {
     pub static ref HOME_DIR: PathBuf = dirs_next::home_dir().expect("can't find HOME dir");
     pub static ref CONFIG_DIRS: Vec<PathBuf> = config_dirs();

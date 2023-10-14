@@ -10,7 +10,6 @@ members = [
   "wezterm-gui",
   "wezterm-mux-server",
   "wezterm-open-url",
-  "wezterm-ssh"
 ]
 resolver = "2"
 exclude = [
